@@ -1,7 +1,7 @@
 {
   "name": "minka-desktop",
   "productName": "Minka",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Minka — ThinkOpen support desk desktop app",
   "author": "ThinkOpen Inc. <info@thinkopen.net>",
   "license": "UNLICENSED",
@@ -69,9 +69,9 @@
       "artifactName": "${name}-win-${arch}.${ext}"
     },
     "nsis": {
-      "oneClick": false,
+      "oneClick": true,
       "perMachine": false,
-      "allowToChangeInstallationDirectory": true,
+      "allowToChangeInstallationDirectory": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Minka"
