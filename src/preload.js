@@ -12,7 +12,14 @@ const versionArg =
 
 contextBridge.exposeInMainWorld("minka", {
   isDesktop: true,
+  app: "staff",
   version: versionArg,
+  platform: process.platform,
   focusWindow: () => ipcRenderer.send("minka:focus-window"),
   setBadge: (count) => ipcRenderer.send("minka:set-badge", count),
+  // Auto-update bridge — the web app renders the branded "Update ready" modal;
+  // installUpdate() triggers quitAndInstall() (close → install → relaunch).
+  onUpdateReady: (cb) =>
+    ipcRenderer.on("minka:update-ready", (_e, info) => cb(info)),
+  installUpdate: () => ipcRenderer.invoke("minka:install-update"),
 });

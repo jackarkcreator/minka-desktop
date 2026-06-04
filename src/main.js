@@ -29,7 +29,30 @@ function initAutoUpdates() {
   autoUpdater.on("error", (err) => {
     console.warn("[autoUpdater]", err == null ? "unknown error" : err.message || err);
   });
-  const check = () => autoUpdater.checkForUpdatesAndNotify().catch(() => {});
+
+  // New version downloaded → tell the web app to show its branded "Update ready"
+  // modal. Skip macOS until signed/notarized (quitAndInstall fails unsigned, so
+  // we don't show a button that can't work; it lights up on mac once we sign).
+  autoUpdater.on("update-downloaded", (info) => {
+    if (process.platform === "darwin") return;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("minka:update-ready", {
+        version: info && info.version,
+        releaseName: info && info.releaseName,
+        releaseNotes:
+          info && typeof info.releaseNotes === "string" ? info.releaseNotes : null,
+      });
+    }
+  });
+
+  // "Install & Restart" from the modal → close, install, relaunch.
+  ipcMain.handle("minka:install-update", () => {
+    setImmediate(() => autoUpdater.quitAndInstall());
+  });
+
+  // We own the update UI now → checkForUpdates (not ...AndNotify, which would
+  // also pop a native OS notification that double-ups with the modal).
+  const check = () => autoUpdater.checkForUpdates().catch(() => {});
   setTimeout(check, 8000);
   setInterval(check, 6 * 60 * 60 * 1000);
 }
@@ -88,6 +111,7 @@ if (!gotLock) {
 function createWindow() {
   const state = loadState();
   const userAgentSuffix = ` MinkaDesktop/${app.getVersion()}`;
+  const isMac = process.platform === "darwin";
 
   mainWindow = new BrowserWindow({
     width: state.width || 1440,
@@ -98,12 +122,19 @@ function createWindow() {
     minHeight: 600,
     backgroundColor: "#0A2540", // ThinkOpen navy — avoids white flash on load
     title: "Minka",
-    // Quo-style clean chrome: no title strip, traffic lights inset over the
-    // content (sit over the sidebar top, like Quo). Title region stays draggable.
-    // Frameless: the web app paints its own navy title bar; the OS traffic
-    // lights sit inset on it (centered in the 40px bar).
-    titleBarStyle: "hiddenInset",
-    trafficLightPosition: { x: 18, y: 13 },
+    // Quo-style clean chrome: no title strip, the web app paints its own navy
+    // (#0A2540) title bar (h-10 = 40px). We hide the OS frame so that navy bar
+    // IS the window title bar on every platform:
+    //   macOS  → hiddenInset, traffic lights inset over the navy bar (draggable).
+    //   Win/Linux → hidden + titleBarOverlay so the native min/max/close buttons
+    //     paint navy with white glyphs inside the 40px navy bar. hiddenInset is a
+    //     macOS-only no-op on Windows — using it there left the OS's own frame +
+    //     menu bar showing with the web's navy bar stranded as a redundant strip.
+    autoHideMenuBar: !isMac,
+    titleBarStyle: isMac ? "hiddenInset" : "hidden",
+    ...(isMac
+      ? { trafficLightPosition: { x: 18, y: 13 } }
+      : { titleBarOverlay: { color: "#0A2540", symbolColor: "#ffffff", height: 40 } }),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
