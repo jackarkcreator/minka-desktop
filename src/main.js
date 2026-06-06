@@ -14,7 +14,93 @@ const {
 } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
+const os = require("node:os");
+const { execFile } = require("node:child_process");
 const { autoUpdater } = require("electron-updater");
+const si = require("systeminformation");
+
+// ---- Koban inventory agent (data-collection primitive) --------------------
+// The web app (window.minka.getInventory) orchestrates entitlement + the
+// authenticated POST; this just gathers a one-shot device snapshot from the OS.
+// systeminformation gives the hardware facts + a stable hardware UUID (Mac
+// IOPlatformUUID / Win system UUID) — our device identity. Installed software
+// is platform-specific (no clean cross-platform API), so we shell out with a
+// timeout and degrade to [] on any failure (never block the hardware report).
+function collectSoftware() {
+  return new Promise((resolve) => {
+    const opts = { timeout: 25000, maxBuffer: 64 * 1024 * 1024 };
+    try {
+      if (process.platform === "darwin") {
+        execFile("system_profiler", ["SPApplicationsDataType", "-json"], opts, (err, stdout) => {
+          if (err) return resolve([]);
+          try {
+            const apps = (JSON.parse(stdout).SPApplicationsDataType || [])
+              .map((a) => ({ name: a._name, version: a.version || null }))
+              .filter((a) => a.name);
+            resolve(apps.slice(0, 2000));
+          } catch { resolve([]); }
+        });
+      } else if (process.platform === "win32") {
+        const ps =
+          "Get-ItemProperty 'HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*'," +
+          "'HKLM:\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*' " +
+          "| Where-Object {$_.DisplayName} | Select-Object DisplayName,DisplayVersion | ConvertTo-Json -Compress";
+        execFile("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", ps], opts, (err, stdout) => {
+          if (err) return resolve([]);
+          try {
+            let arr = JSON.parse(stdout);
+            if (!Array.isArray(arr)) arr = [arr];
+            const apps = arr
+              .map((a) => ({ name: a.DisplayName, version: a.DisplayVersion || null }))
+              .filter((a) => a.name);
+            resolve(apps.slice(0, 2000));
+          } catch { resolve([]); }
+        });
+      } else {
+        resolve([]);
+      }
+    } catch {
+      resolve([]);
+    }
+  });
+}
+
+async function collectInventory() {
+  const [uuidData, sys, cpu, mem, osInfo, disks, users, software] = await Promise.all([
+    si.uuid().catch(() => ({})),
+    si.system().catch(() => ({})),
+    si.cpu().catch(() => ({})),
+    si.mem().catch(() => ({})),
+    si.osInfo().catch(() => ({})),
+    si.diskLayout().catch(() => []),
+    si.users().catch(() => []),
+    collectSoftware(),
+  ]);
+
+  const hardwareUuid = uuidData.hardware || sys.uuid || uuidData.os || os.hostname();
+  const diskBytes = (disks || []).reduce((n, d) => n + (d.size || 0), 0) || null;
+  const cpuModel = `${cpu.manufacturer || ""} ${cpu.brand || ""}`.trim() || null;
+  const osVersion =
+    process.platform === "darwin"
+      ? (osInfo.release || null)
+      : `${(osInfo.distro || "").replace(/Microsoft Windows/i, "").trim()}${osInfo.build ? ` (${osInfo.build})` : ""}`.trim() || (osInfo.release || null);
+  const osUser = (users && users[0] && users[0].user) || os.userInfo().username || null;
+
+  return {
+    hardwareUuid,
+    serial: sys.serial || null,
+    hostname: os.hostname() || null,
+    platform: process.platform,
+    osVersion,
+    cpuModel,
+    cpuCount: cpu.physicalCores || cpu.cores || null,
+    ramBytes: mem.total || null,
+    diskBytes,
+    lastOsUser: osUser,
+    appVersion: app.getVersion(),
+    software,
+  };
+}
 
 // ---- Config ---------------------------------------------------------------
 const APP_URL =
@@ -275,6 +361,16 @@ ipcMain.on("minka:focus-window", () => showWindow());
 ipcMain.on("minka:set-badge", (_e, count) => {
   if (process.platform === "darwin") {
     app.dock.setBadge(count && count > 0 ? String(count) : "");
+  }
+});
+
+// Koban: the web app asks for a device snapshot; collection failures resolve null.
+ipcMain.handle("minka:get-inventory", async () => {
+  try {
+    return await collectInventory();
+  } catch (err) {
+    console.warn("[koban] inventory collection failed:", err && err.message);
+    return null;
   }
 });
 
