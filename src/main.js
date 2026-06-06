@@ -11,6 +11,8 @@ const {
   ipcMain,
   nativeImage,
   session,
+  powerMonitor,
+  dialog,
 } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
@@ -102,6 +104,51 @@ async function collectInventory() {
     lastOsUser: osUser,
     appVersion: app.getVersion(),
     software,
+  };
+}
+
+// ---- Koban presence agent (live session/activity primitive) ---------------
+// Reports the current login session: who's logged in, when the session began
+// (process start ≈ login when autostarted), how long they've been idle, and
+// whether the screen is locked. powerMonitor gives OS-truth idle/lock. The web
+// app gates on the `activity` entitlement + a one-time disclosure and owns the
+// authenticated POST (~60s). See project_koban.
+const SESSION_STARTED_AT = new Date(); // process start ≈ login when autostarted
+
+// hardware_uuid is our device identity; it never changes for the life of the
+// process, so resolve it once (si.uuid is comparatively heavy) and cache it.
+let cachedHardwareUuid = null;
+async function getHardwareUuid() {
+  if (cachedHardwareUuid) return cachedHardwareUuid;
+  try {
+    const [uuidData, sys] = await Promise.all([
+      si.uuid().catch(() => ({})),
+      si.system().catch(() => ({})),
+    ]);
+    cachedHardwareUuid = uuidData.hardware || sys.uuid || uuidData.os || os.hostname();
+  } catch {
+    cachedHardwareUuid = os.hostname();
+  }
+  return cachedHardwareUuid;
+}
+
+async function collectPresence() {
+  const hardwareUuid = await getHardwareUuid();
+  let idleSeconds = null;
+  let lockState = "unknown"; // 'active' | 'idle' | 'locked' | 'unknown'
+  try { idleSeconds = powerMonitor.getSystemIdleTime(); } catch { /* unsupported */ }
+  try { lockState = powerMonitor.getSystemIdleState(300); } catch { /* unsupported */ } // 5-min idle threshold
+  let osUser = null;
+  try { osUser = os.userInfo().username || null; } catch { /* non-fatal */ }
+  return {
+    hardwareUuid,
+    osUser,
+    sessionStartedAt: SESSION_STARTED_AT.toISOString(),
+    idleSeconds,
+    lockState,
+    platform: process.platform,
+    hostname: os.hostname() || null,
+    appVersion: app.getVersion(),
   };
 }
 
@@ -197,10 +244,37 @@ if (!gotLock) {
   app.on("second-instance", () => showWindow());
 }
 
+// True when the OS started us at login as a hidden item (so we boot straight to
+// the tray and keep heartbeating presence without stealing focus). macOS reports
+// this via wasOpenedAsHidden; on Windows we pass a --hidden arg in the login item.
+function launchedHidden() {
+  try {
+    return process.argv.includes("--hidden") || app.getLoginItemSettings().wasOpenedAsHidden === true;
+  } catch {
+    return false;
+  }
+}
+
+// First launch only: default to start-at-login (hidden to tray) so presence
+// reporting is continuous without the user opting in. The tray "Open at Login"
+// checkbox lets them turn it off — we force the default ONCE (marker file), so
+// an opt-out sticks across updates.
+function ensureAutostartDefault() {
+  try {
+    const marker = path.join(app.getPath("userData"), "autostart-initialized");
+    if (fs.existsSync(marker)) return;
+    app.setLoginItemSettings({ openAtLogin: true, openAsHidden: true, args: ["--hidden"] });
+    fs.writeFileSync(marker, new Date().toISOString());
+  } catch {
+    /* non-fatal */
+  }
+}
+
 function createWindow() {
   const state = loadState();
   const userAgentSuffix = ` MinkaDesktop/${app.getVersion()}`;
   const isMac = process.platform === "darwin";
+  const startHidden = launchedHidden();
 
   mainWindow = new BrowserWindow({
     width: state.width || 1440,
@@ -209,6 +283,7 @@ function createWindow() {
     y: state.y,
     minWidth: 900,
     minHeight: 600,
+    show: !startHidden, // start in the tray when auto-launched at login
     backgroundColor: "#0A2540", // ThinkOpen navy — avoids white flash on load
     title: "Minka",
     // Quo-style clean chrome: no title strip, the web app paints its own navy
@@ -229,6 +304,10 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       spellcheck: true,
+      // Keep timers (the ~60s presence heartbeat) at full fidelity while the
+      // window is hidden in the tray — without this Electron throttles a hidden
+      // window's timers and presence would drift.
+      backgroundThrottling: false,
       additionalArguments: [`--minka-version=${app.getVersion()}`],
     },
   });
@@ -322,6 +401,7 @@ function refreshTrayMenu() {
         label: "Reload",
         click: () => mainWindow && mainWindow.webContents.reload(),
       },
+      { label: "Privacy & Activity…", click: () => showActivityDisclosure() },
       { type: "separator" },
       {
         label: "Quit Minka",
@@ -377,6 +457,36 @@ ipcMain.handle("minka:get-inventory", async () => {
   }
 });
 
+// Koban: the web app asks for a live presence snapshot (~60s); failures → null.
+ipcMain.handle("minka:get-presence", async () => {
+  try {
+    return await collectPresence();
+  } catch (err) {
+    console.warn("[koban] presence collection failed:", err && err.message);
+    return null;
+  }
+});
+
+// Persistent activity-monitoring disclosure (the "always available" half of the
+// first-run notice the web app shows). Reachable any time from the tray so the
+// monitored user can re-read exactly what is collected and why.
+const ACTIVITY_DISCLOSURE =
+  "When your organization enables Koban activity monitoring, this app reports " +
+  "your device's session presence to your IT administrators: the signed-in " +
+  "username, when the session started, how long the device has been idle, and " +
+  "whether the screen is locked. It does NOT capture keystrokes, screen " +
+  "contents, browsing, or file activity. The data is used for IT support, " +
+  "utilization, and billing accuracy. Questions? Contact your IT administrator.";
+function showActivityDisclosure() {
+  dialog.showMessageBox({
+    type: "info",
+    title: "Privacy & Activity Monitoring",
+    message: "Koban activity monitoring",
+    detail: ACTIVITY_DISCLOSURE,
+    buttons: ["OK"],
+  });
+}
+
 // ---- Lifecycle ------------------------------------------------------------
 app.whenReady().then(() => {
   // Auto-grant notification permission (the OS still governs delivery).
@@ -390,6 +500,7 @@ app.whenReady().then(() => {
   );
 
   buildAppMenu();
+  ensureAutostartDefault();
   createWindow();
   buildTray();
   initAutoUpdates();
