@@ -2,7 +2,7 @@
 
 > **Living doc.** Update this at the end of any session that changes the project, then commit. It round-trips between machines via git — it is how office-Claude and travel-Claude stay in sync. Keep it short and current; move durable rules to `CLAUDE.md`.
 
-**Last updated:** 2026-06-15 · **Branch:** `main` · **HEAD:** `83c6877`
+**Last updated:** 2026-06-15 · **Branch:** `main` — *state reflects the milestones below; run `git log` for live HEAD (no pinned SHA here — it self-invalidates on the next commit).*
 **Distribution:** GitHub Actions CI → public GitHub Releases at `github.com/jackarkcreator/minka-desktop`. Ships on `v*` tag push. `electron-updater` pulls `latest.yml` / `latest-mac.yml` from that feed. macOS auto-update is **signing-gated** (unsigned until notarized); Windows NSIS self-updates unsigned.
 
 ---
