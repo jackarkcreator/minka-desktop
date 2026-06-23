@@ -256,9 +256,9 @@ const APP_URL =
   process.env.MINKA_URL || "https://staff.thinkopen.net/admin";
 
 // Auto-update pulls from the app's public GitHub Releases feed (configured in
-// package.json build.publish). Windows (NSIS) self-updates even unsigned; macOS
-// auto-update requires a signed/notarized build, so until we sign it the mac
-// check is a logged no-op (errors are swallowed, never fatal).
+// package.json build.publish). Both platforms are signed now (mac: Developer ID +
+// notarized; win: Azure Trusted Signing), so mac auto-update is live alongside
+// Windows. Errors are swallowed, never fatal.
 function initAutoUpdates() {
   autoUpdater.autoDownload = true;
   autoUpdater.on("error", (err) => {
@@ -266,10 +266,9 @@ function initAutoUpdates() {
   });
 
   // New version downloaded → tell the web app to show its branded "Update ready"
-  // modal. Skip macOS until signed/notarized (quitAndInstall fails unsigned, so
-  // we don't show a button that can't work; it lights up on mac once we sign).
+  // modal. Runs on both platforms now that the builds are signed + notarized, so
+  // quitAndInstall() succeeds on macOS too.
   autoUpdater.on("update-downloaded", (info) => {
-    if (process.platform === "darwin") return;
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send("minka:update-ready", {
         version: info && info.version,
