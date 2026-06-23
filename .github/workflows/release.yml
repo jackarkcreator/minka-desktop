@@ -9,7 +9,17 @@ name: Release
 # APPLE_API_KEY_B64 / APPLE_API_KEY_ID / APPLE_API_ISSUER / APPLE_TEAM_ID (App Store
 # Connect API key for notarytool). The mac and win build steps are split by OS so the
 # Windows job never receives CSC_LINK (on Windows that env names a *Windows* signing
-# cert and would break the build). Windows remains UNSIGNED — Azure Trusted Signing TBD.
+# cert and would break the build).
+#
+# Windows is SIGNED via Azure Trusted Signing — electron-builder 25's native
+# `win.azureSignOptions` (endpoint/codeSigningAccountName/certificateProfileName in
+# package.json) signs each artifact DURING the build, so latest.yml hashes match the
+# signed .exe and auto-update stays intact. Auth = the Entra service principal
+# `gh-artifact-signing-thinkopen` via AZURE_TENANT_ID / AZURE_CLIENT_ID /
+# AZURE_CLIENT_SECRET (repo secrets), scoped to the `thinkopen` signing account with
+# role "Artifact Signing Certificate Profile Signer". Cert profile = thinkopen-public
+# (Public Trust, subject CN "ThinkOpen, Inc."). electron-builder auto-installs the
+# TrustedSigning PS module on the runner — no extra setup step needed.
 
 on:
   push:
@@ -76,9 +86,14 @@ jobs:
             sleep 30
           done
 
-      # Windows: unsigned (Azure Trusted Signing deferred). No CSC_* env here.
-      - name: Build & publish (win — unsigned)
+      # Windows: signed via Azure Trusted Signing (NO CSC_* env — that's macOS).
+      # azureSignOptions in package.json + the AZURE_* service-principal creds drive
+      # in-build signing; electron-builder installs the TrustedSigning PS module itself.
+      - name: Build & publish (win — Azure Trusted Signing)
         if: matrix.os == 'windows-latest'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
         run: npx electron-builder ${{ matrix.args }} --publish always
