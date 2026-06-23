@@ -1,7 +1,7 @@
 {
   "name": "minka-desktop",
   "productName": "Minka",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "Minka — ThinkOpen support desk desktop app",
   "author": "ThinkOpen Inc. <info@thinkopen.net>",
   "license": "UNLICENSED",
@@ -49,10 +49,13 @@
         "zip"
       ],
       "icon": "build/icon.icns",
-      "identity": null,
-      "hardenedRuntime": false,
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
       "darkModeSupport": true,
-      "artifactName": "${name}-mac-${arch}.${ext}"
+      "artifactName": "${name}-mac-${arch}.${ext}",
+      "notarize": true
     },
     "dmg": {
       "title": "Minka ${version}"

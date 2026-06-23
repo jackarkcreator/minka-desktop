@@ -2,8 +2,14 @@ name: Release
 
 # Build + publish installers on a version tag (e.g. `git tag v1.0.0 && git push --tags`).
 # macOS → universal .dmg/.zip; Windows → NSIS .exe. Both are published to THIS repo's
-# GitHub Releases (the public auto-update feed electron-updater reads). Builds are
-# currently UNSIGNED — add Apple notarization + Azure Trusted Signing secrets later.
+# GitHub Releases (the public auto-update feed electron-updater reads).
+#
+# macOS is SIGNED (Developer ID Application: ThinkOpen LLC, 7C63B47XSL) + NOTARIZED
+# via the repo secrets CSC_LINK / CSC_KEY_PASSWORD (Developer ID .p12) and
+# APPLE_API_KEY_B64 / APPLE_API_KEY_ID / APPLE_API_ISSUER / APPLE_TEAM_ID (App Store
+# Connect API key for notarytool). The mac and win build steps are split by OS so the
+# Windows job never receives CSC_LINK (on Windows that env names a *Windows* signing
+# cert and would break the build). Windows remains UNSIGNED — Azure Trusted Signing TBD.
 
 on:
   push:
@@ -43,7 +49,36 @@ jobs:
       - name: Install deps
         run: npm ci
 
-      - name: Build & publish
+      # macOS: signed + notarized. notarytool occasionally fails with transient
+      # network errors after a long hang; signing always succeeds before notarization
+      # and a failed notarize publishes no asset, so a full retry of the step is safe.
+      - name: Build & publish (mac — signed + notarized)
+        if: matrix.os == 'macos-latest'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          echo "${{ secrets.APPLE_API_KEY_B64 }}" | base64 --decode > "$RUNNER_TEMP/asc_key.p8"
+          export APPLE_API_KEY="$RUNNER_TEMP/asc_key.p8"
+          MAX_ATTEMPTS=3
+          ATTEMPT=0
+          until npx electron-builder ${{ matrix.args }} --publish always; do
+            ATTEMPT=$((ATTEMPT + 1))
+            if [ "$ATTEMPT" -ge "$MAX_ATTEMPTS" ]; then
+              echo "Build & notarize failed after $MAX_ATTEMPTS attempts — giving up."
+              exit 1
+            fi
+            echo "Attempt $ATTEMPT failed; retrying in 30s (attempt $((ATTEMPT + 1)) of $MAX_ATTEMPTS)..."
+            sleep 30
+          done
+
+      # Windows: unsigned (Azure Trusted Signing deferred). No CSC_* env here.
+      - name: Build & publish (win — unsigned)
+        if: matrix.os == 'windows-latest'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npx electron-builder ${{ matrix.args }} --publish always
