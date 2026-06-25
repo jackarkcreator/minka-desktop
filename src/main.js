@@ -259,15 +259,62 @@ const APP_URL =
 // package.json build.publish). Both platforms are signed now (mac: Developer ID +
 // notarized; win: Azure Trusted Signing), so mac auto-update is live alongside
 // Windows. Errors are swallowed, never fatal.
+// True only while a user-initiated "Check for Updates…" is in flight, so the
+// otherwise-silent update events surface a visible dialog. Auto (timer) checks
+// stay quiet and just download in the background.
+let manualUpdateCheck = false;
+
 function initAutoUpdates() {
   autoUpdater.autoDownload = true;
+
   autoUpdater.on("error", (err) => {
-    console.warn("[autoUpdater]", err == null ? "unknown error" : err.message || err);
+    const msg = err == null ? "unknown error" : err.message || String(err);
+    console.warn("[autoUpdater]", msg);
+    if (manualUpdateCheck) {
+      manualUpdateCheck = false;
+      // Surfaces the cause auto-update otherwise swallows: a bad signature, the
+      // app running translocated (outside /Applications), no network, or a
+      // missing feed. This is the diagnostic for "mac isn't auto-updating."
+      dialog.showMessageBox({
+        type: "error",
+        title: "Check for Updates",
+        message: "Couldn't check for updates",
+        detail: msg,
+        buttons: ["OK"],
+      });
+    }
+  });
+
+  // No newer version on the feed → reassure a manual checker.
+  autoUpdater.on("update-not-available", () => {
+    if (!manualUpdateCheck) return;
+    manualUpdateCheck = false;
+    dialog.showMessageBox({
+      type: "info",
+      title: "Check for Updates",
+      message: "You're up to date",
+      detail: `Minka ${app.getVersion()} is the latest version.`,
+      buttons: ["OK"],
+    });
+  });
+
+  // A newer version exists → autoDownload pulls it; tell a manual checker it's
+  // on the way (it finishes in update-downloaded below).
+  autoUpdater.on("update-available", (info) => {
+    if (!manualUpdateCheck) return;
+    dialog.showMessageBox({
+      type: "info",
+      title: "Check for Updates",
+      message: `Update available — Minka ${info && info.version}`,
+      detail: "Downloading in the background. You'll be asked to restart when it's ready.",
+      buttons: ["OK"],
+    });
   });
 
   // New version downloaded → tell the web app to show its branded "Update ready"
   // modal. Runs on both platforms now that the builds are signed + notarized, so
-  // quitAndInstall() succeeds on macOS too.
+  // quitAndInstall() succeeds on macOS too. For a manual check, also show a
+  // native restart prompt (don't rely on the web modal having surfaced).
   autoUpdater.on("update-downloaded", (info) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send("minka:update-ready", {
@@ -276,6 +323,22 @@ function initAutoUpdates() {
         releaseNotes:
           info && typeof info.releaseNotes === "string" ? info.releaseNotes : null,
       });
+    }
+    if (manualUpdateCheck) {
+      manualUpdateCheck = false;
+      dialog
+        .showMessageBox({
+          type: "info",
+          title: "Check for Updates",
+          message: `Minka ${info && info.version} is ready to install`,
+          detail: "Restart now to finish updating.",
+          buttons: ["Restart now", "Later"],
+          defaultId: 0,
+          cancelId: 1,
+        })
+        .then(({ response }) => {
+          if (response === 0) setImmediate(() => autoUpdater.quitAndInstall());
+        });
     }
   });
 
@@ -289,6 +352,17 @@ function initAutoUpdates() {
   const check = () => autoUpdater.checkForUpdates().catch(() => {});
   setTimeout(check, 8000);
   setInterval(check, 6 * 60 * 60 * 1000);
+}
+
+// User-initiated "Check for Updates…" (app menu + tray). Flags the in-flight
+// events so the result is visible, then kicks a check. The "error" listener
+// above reports failures — so the user finally sees WHY a mac auto-update isn't
+// completing instead of nothing happening.
+function checkForUpdatesInteractive() {
+  manualUpdateCheck = true;
+  autoUpdater.checkForUpdates().catch(() => {
+    /* surfaced by the "error" event */
+  });
 }
 
 // Hosts we keep INSIDE the app window (app itself + OAuth identity providers).
@@ -499,6 +573,7 @@ function refreshTrayMenu() {
         label: "Reload",
         click: () => mainWindow && mainWindow.webContents.reload(),
       },
+      { label: "Check for Updates…", click: () => checkForUpdatesInteractive() },
       { label: "Privacy & Activity…", click: () => openActivityCenter() },
       { type: "separator" },
       {
@@ -514,9 +589,29 @@ function refreshTrayMenu() {
 }
 
 function buildAppMenu() {
-  // Minimal menu so copy/paste/select-all/reload/devtools work natively.
+  // Minimal menu so copy/paste/select-all/reload/devtools work natively — plus
+  // a "Check for Updates…" entry (macOS app-menu convention; Help menu on Win).
+  const isMac = process.platform === "darwin";
   const template = [
-    { role: "appMenu" },
+    ...(isMac
+      ? [
+          {
+            label: app.name,
+            submenu: [
+              { role: "about" },
+              { label: "Check for Updates…", click: () => checkForUpdatesInteractive() },
+              { type: "separator" },
+              { role: "services" },
+              { type: "separator" },
+              { role: "hide" },
+              { role: "hideOthers" },
+              { role: "unhide" },
+              { type: "separator" },
+              { role: "quit" },
+            ],
+          },
+        ]
+      : [{ role: "appMenu" }]),
     { role: "editMenu" },
     {
       label: "View",
@@ -533,6 +628,16 @@ function buildAppMenu() {
       ],
     },
     { role: "windowMenu" },
+    ...(isMac
+      ? []
+      : [
+          {
+            label: "Help",
+            submenu: [
+              { label: "Check for Updates…", click: () => checkForUpdatesInteractive() },
+            ],
+          },
+        ]),
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
