@@ -650,6 +650,17 @@ ipcMain.on("minka:set-badge", (_e, count) => {
   }
 });
 
+// Timer widget: seconds since last user input anywhere on the machine, so the
+// web app's idle auto-pause doesn't kill timers while the engineer works in
+// another app. Failures resolve null → the web app falls back safely.
+ipcMain.handle("minka:system-idle-seconds", () => {
+  try {
+    return powerMonitor.getSystemIdleTime();
+  } catch {
+    return null;
+  }
+});
+
 // Koban: the web app asks for a device snapshot; collection failures resolve null.
 ipcMain.handle("minka:get-inventory", async () => {
   try {

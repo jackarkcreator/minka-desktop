@@ -22,6 +22,12 @@ contextBridge.exposeInMainWorld("minka", {
   onUpdateReady: (cb) =>
     ipcRenderer.on("minka:update-ready", (_e, info) => cb(info)),
   installUpdate: () => ipcRenderer.invoke("minka:install-update"),
+  // OS-truth idle (powerMonitor.getSystemIdleTime, seconds since last input
+  // anywhere on the machine). The web timer widget folds this into its idle
+  // clock so work done in OTHER apps counts as activity — window-scoped input
+  // alone auto-paused live timers whenever Minka sat behind the app the
+  // engineer was actually working in.
+  getSystemIdleSeconds: () => ipcRenderer.invoke("minka:system-idle-seconds"),
   // Koban inventory agent — returns a one-shot device snapshot (or null). The
   // web app gates on entitlement and owns the authenticated POST.
   getInventory: () => ipcRenderer.invoke("minka:get-inventory"),
