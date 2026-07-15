@@ -2,7 +2,9 @@ import sharp from "/Users/barns/Ccode/thinkopen-net/node_modules/sharp/lib/index
 import { readFileSync, writeFileSync } from "node:fs";
 import { execSync } from "node:child_process";
 
-const root = "/Users/barns/Ccode/minka-desktop";
+// Root repo dir — pass as argv[2] so the same generator drives both the staff
+// (minka-desktop) and client (thinkopen-support-desktop) Okvia builds.
+const root = process.argv[2] || "/Users/barns/Ccode/minka-desktop";
 const dockSvg = readFileSync(`${root}/build/icon-master.svg`);
 const traySvg = readFileSync(`${root}/build/tray-master.svg`);
 

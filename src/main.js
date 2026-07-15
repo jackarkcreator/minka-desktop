@@ -253,7 +253,7 @@ async function collectPresence() {
 
 // ---- Config ---------------------------------------------------------------
 const APP_URL =
-  process.env.MINKA_URL || "https://staff.thinkopen.net/admin";
+  process.env.MINKA_URL || "https://staff.okvia.io/admin";
 
 // Auto-update pulls from the app's public GitHub Releases feed (configured in
 // package.json build.publish). Both platforms are signed now (mac: Developer ID +
@@ -293,7 +293,7 @@ function initAutoUpdates() {
       type: "info",
       title: "Check for Updates",
       message: "You're up to date",
-      detail: `Minka ${app.getVersion()} is the latest version.`,
+      detail: `Okvia ${app.getVersion()} is the latest version.`,
       buttons: ["OK"],
     });
   });
@@ -305,7 +305,7 @@ function initAutoUpdates() {
     dialog.showMessageBox({
       type: "info",
       title: "Check for Updates",
-      message: `Update available — Minka ${info && info.version}`,
+      message: `Update available — Okvia ${info && info.version}`,
       detail: "Downloading in the background. You'll be asked to restart when it's ready.",
       buttons: ["OK"],
     });
@@ -330,7 +330,7 @@ function initAutoUpdates() {
         .showMessageBox({
           type: "info",
           title: "Check for Updates",
-          message: `Minka ${info && info.version} is ready to install`,
+          message: `Okvia ${info && info.version} is ready to install`,
           detail: "Restart now to finish updating.",
           buttons: ["Restart now", "Later"],
           defaultId: 0,
@@ -368,6 +368,9 @@ function checkForUpdatesInteractive() {
 // Hosts we keep INSIDE the app window (app itself + OAuth identity providers).
 // Everything else opens in the user's default browser.
 const INTERNAL_HOSTS = [
+  "staff.okvia.io",
+  "support.okvia.io",
+  "okvia.io",
   "staff.thinkopen.net",
   "support.thinkopen.net",
   "thinkopen.net",
@@ -456,10 +459,10 @@ function createWindow() {
     minWidth: 900,
     minHeight: 600,
     show: !startHidden, // start in the tray when auto-launched at login
-    backgroundColor: "#0A2540", // ThinkOpen navy — avoids white flash on load
-    title: "Minka",
+    backgroundColor: "#131722", // Okvia ink — avoids white flash on load
+    title: "Okvia",
     // Quo-style clean chrome: no title strip, the web app paints its own navy
-    // (#0A2540) title bar (h-10 = 40px). We hide the OS frame so that navy bar
+    // (#131722) title bar (h-10 = 40px). We hide the OS frame so that navy bar
     // IS the window title bar on every platform:
     //   macOS  → hiddenInset, traffic lights inset over the navy bar (draggable).
     //   Win/Linux → hidden + titleBarOverlay so the native min/max/close buttons
@@ -470,7 +473,7 @@ function createWindow() {
     titleBarStyle: isMac ? "hiddenInset" : "hidden",
     ...(isMac
       ? { trafficLightPosition: { x: 18, y: 13 } }
-      : { titleBarOverlay: { color: "#0A2540", symbolColor: "#ffffff", height: 40 } }),
+      : { titleBarOverlay: { color: "#131722", symbolColor: "#ffffff", height: 40 } }),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -548,7 +551,7 @@ function buildTray() {
   );
   img.setTemplateImage(true);
   tray = new Tray(img);
-  tray.setToolTip("Minka");
+  tray.setToolTip("Okvia");
   refreshTrayMenu();
   tray.on("click", () => showWindow());
 }
@@ -558,7 +561,7 @@ function refreshTrayMenu() {
   const loginOn = app.getLoginItemSettings().openAtLogin;
   tray.setContextMenu(
     Menu.buildFromTemplate([
-      { label: "Open Minka", click: () => showWindow() },
+      { label: "Open Okvia", click: () => showWindow() },
       { type: "separator" },
       {
         label: "Open at Login",
@@ -577,7 +580,7 @@ function refreshTrayMenu() {
       { label: "Privacy & Activity…", click: () => openActivityCenter() },
       { type: "separator" },
       {
-        label: "Quit Minka",
+        label: "Quit Okvia",
         accelerator: "Command+Q",
         click: () => {
           app.isQuitting = true;
@@ -710,7 +713,8 @@ async function readActivityState() {
     return await mainWindow.webContents.executeJavaScript(`(async () => {
       try {
         const h = location.hostname;
-        if (h !== "thinkopen.net" && !h.endsWith(".thinkopen.net")) return { ready: false };
+        const firstParty = h === "okvia.io" || h.endsWith(".okvia.io") || h === "thinkopen.net" || h.endsWith(".thinkopen.net");
+        if (!firstParty) return { ready: false };
         let acknowledged = false;
         try { acknowledged = localStorage.getItem(${JSON.stringify(ACTIVITY_ACK_KEY)}) === "1"; } catch {}
         let activity = false;
