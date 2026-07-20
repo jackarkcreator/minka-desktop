@@ -1,7 +1,7 @@
 {
   "name": "minka-desktop",
   "productName": "Okvia",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Okvia — staff desktop app",
   "author": "ThinkOpen Inc. <info@thinkopen.net>",
   "license": "UNLICENSED",
@@ -27,7 +27,7 @@
     "electron-builder": "^25.1.8"
   },
   "build": {
-    "appId": "io.okvia.staff",
+    "appId": "net.thinkopen.minka",
     "productName": "Okvia",
     "copyright": "Copyright © 2026 ThinkOpen Inc.",
     "directories": {
