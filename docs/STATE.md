@@ -72,3 +72,7 @@ hdiutil detach "/Volumes/Minka 1.0.X"
 Store Connect API key (`AuthKey_J4574BB8M5`, issuer `62cc9a04-…`). To re-create `CSC_LINK`
 on a new machine: `security export -t identities -f pkcs12 -P <pw> -o devid.p12` (approve
 the keychain dialog), then `base64 -i devid.p12 | gh secret set CSC_LINK`.
+
+## 2026-07-19 — v1.1.1: Okvia branding, ORIGINAL appId restored (update-loop fix)
+v1.1.0 (Okvia rebrand) changed appId to io.okvia.* — Squirrel.Mac silently rejects cross-bundle-id updates, stranding macOS installs in an Install&Restart loop (Windows NSIS would have installed side-by-side). v1.1.0 re-drafted on both repos; v1.1.1 keeps ALL Okvia branding but restores appId (net.thinkopen.minka / net.thinkopen.support). Published 2026-07-19 eve, feeds verified 1.1.1, mac artifact Info.plist verified (bundleId original, name Okvia).
+🧨 STANDING RULE: never change appId in a release meant to flow through auto-update. The io.okvia.* identity migration is a dedicated future release WITH a feed-migration plan (new repo/feed or manual reinstall step), not a version bump. On disk the mac bundle stays Minka.app / ThinkOpen Support.app (folder name) while displaying as Okvia — cosmetic, fix in that same future migration.
