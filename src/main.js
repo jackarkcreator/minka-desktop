@@ -855,6 +855,14 @@ app.on("before-quit", () => {
   saveState(mainWindow);
 });
 
+// macOS Squirrel fires this (NOT before-quit) when quitAndInstall() begins;
+// without the flag the close-to-tray handler blocks the window from closing
+// and the update hangs at "Restarting…" until a manual quit.
+app.on("before-quit-for-update", () => {
+  app.isQuitting = true;
+  saveState(mainWindow);
+});
+
 // Keep running when all windows are "closed" (hidden to tray).
 app.on("window-all-closed", () => {
   // On macOS we intentionally stay alive in the tray.
