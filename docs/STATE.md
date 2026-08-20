@@ -97,4 +97,12 @@ v1.1.0 (Okvia rebrand) changed appId to io.okvia.* — Squirrel.Mac silently rej
 
 **Same fix ported** to `thinkopen-support-desktop` (v1.1.3) and `arqos-desktop` (v1.0.3) — identical block, all three carried the marker pattern.
 
-**Verified:** 20-assertion suite over the 9 real state combinations (fresh install, steady state, the prod bug shape, drifted bundle, opt-out persistence across relaunches, tray re-enable args, requires-approval, dev run, app moved) — the harness slices the functions out of `src/main.js` at runtime and evaluates them against stubs, so the test cannot drift from what ships. **NOT yet verified on a real install** — the delete-login-item → relaunch → re-registers-to-/Applications/Okvia.app check needs a packaged build on a live desktop session.
+**Verified (logic):** 20-assertion suite over the 9 real state combinations (fresh install, steady state, the prod bug shape, drifted bundle, opt-out persistence across relaunches, tray re-enable args, requires-approval, dev run, app moved) — the harness slices the functions out of `src/main.js` at runtime and evaluates them against stubs, so the test cannot drift from what ships.
+
+**Verified (production, 2026-08-20 on Keno's MacBook):** v1.1.3 auto-updated at 06:51:20Z (release published 06:48:28Z) and healed the drifted login item on first launch:
+```json
+{ "userDisabled": false, "registeredFor": "/Applications/Okvia.app", "updatedAt": "2026-08-20T06:51:20.252Z" }
+```
+The pref file **existing at all** is the proof the migration branch ran — a healthy state writes nothing. `autostart-initialized` is gone from `~/Library/Application Support/Okvia/`. Shipped as v1.1.3 (staff, 8/8 assets), Okvia Support v1.1.3 (8/8), Arqos v1.0.3 (5/5, mac-only).
+
+⚠️ **Arqos cannot receive this via auto-update.** `arqos-desktop` has `electron-updater` in dependencies but never calls `autoUpdater` anywhere in `src/`, and the repo is private so its feed is not publicly fetchable. v1.0.3 requires a manual dmg install on every agent. For a monitoring agent this is the app where a silent non-start is least visible — worth wiring auto-update or an explicit deploy step.
