@@ -1,4 +1,7 @@
-# Minka Desktop — Current State
+# Okvia Desktop (staff) — Current State
+
+> **The product is Okvia.** `minka` below appears only as frozen identifiers (repo, appId, artifact
+> names, on-disk `Minka.app`) — see the Naming section in `CLAUDE.md`. Those stay; the prose doesn't.
 
 > **Living doc.** Update this at the end of any session that changes the project, then commit. It round-trips between machines via git — it is how office-Claude and travel-Claude stay in sync. Keep it short and current; move durable rules to `CLAUDE.md`.
 

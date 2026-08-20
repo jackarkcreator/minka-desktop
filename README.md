@@ -1,6 +1,8 @@
-# Minka Desktop
+# Okvia Desktop (staff)
 
-Thin Electron shell around the Minka admin web app (`staff.thinkopen.net/admin`).
+Thin Electron shell around the Okvia admin web app (`staff.thinkopen.net/admin`).
+(The repo, appId, and build artifacts are still named `minka-*` — those identifiers
+are frozen because the auto-update feed depends on them. See `CLAUDE.md` → Naming.)
 It exists so the in-page Supabase Realtime listener can run continuously and fire
 **native macOS notifications** the instant a comment lands on a ticket — clicking
 the notification focuses the app and jumps straight to the ticket.

@@ -1,12 +1,34 @@
-# Minka Desktop — Project Operating Doc
+# Okvia Desktop (staff) — Project Operating Doc
 
 **Canonical knowledge lives in git, not in any one machine's `~/.claude` memory. Read this file + `docs/STATE.md` before acting. `docs/STATE.md` = where the project is now; this file = how it works + rules that don't change. If a doc disagrees with live state, trust live state and fix the doc.**
 
 ---
 
+## Naming — the product is OKVIA (read this first)
+
+**The product is Okvia.** It has been since the v1.1.0 rebrand (2026-07-19). Call it Okvia in
+everything you write — prose, commit messages, docs, anything user-facing. Never "Minka".
+
+`minka` survives ONLY as **frozen internal identifiers**, and they are frozen *on purpose*:
+
+| Where `minka` still appears | Why it cannot change |
+|---|---|
+| Repo name `minka-desktop` + release feed | The auto-update feed URL is pinned to this repo |
+| appId `net.thinkopen.minka` | **v1.1.1 postmortem** — Squirrel.Mac rejects cross-bundle-id updates. Changing this strands every install in an update loop |
+| Artifact names `minka-desktop-mac-universal.*` | `latest*.yml` feeds reference these paths |
+| On-disk bundle `Minka.app`, volume `Minka <ver>` | Bundle folder name; displays as Okvia |
+| Preload bridge `window.minka.*` | Web app in `thinkopen-net` calls these; renaming breaks both sides |
+
+So: **product name = Okvia, identifiers = minka, and the identifiers stay.** Seeing `minka` in a
+path, appId, or artifact name is correct and must be left alone. Seeing "Minka" in prose is a bug —
+fix it. Retiring the identifiers is the deferred `io.okvia.*` migration (see `docs/STATE.md`), which
+needs a feed-migration plan, not a version bump.
+
+---
+
 ## What it is
 
-Thin Electron shell around the Minka staff admin web app (`staff.thinkopen.net/admin`). It exists so that:
+Thin Electron shell around the Okvia staff admin web app (`staff.thinkopen.net/admin`). It exists so that:
 
 1. **Native notifications** — the Supabase Realtime channel runs continuously in a resident app, fires native macOS/Windows OS notifications on new tickets and comments, and clicking the notification focuses the app and routes to the ticket.
 2. **Koban inventory agent** — `collectInventory()` gathers a one-shot hardware/software/posture snapshot from the OS (`systeminformation` + platform shims) and exposes it to the web app via IPC. The web app owns the entitlement gate and the authenticated POST.
