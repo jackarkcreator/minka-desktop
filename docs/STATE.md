@@ -76,3 +76,22 @@ the keychain dialog), then `base64 -i devid.p12 | gh secret set CSC_LINK`.
 ## 2026-07-19 — v1.1.1: Okvia branding, ORIGINAL appId restored (update-loop fix)
 v1.1.0 (Okvia rebrand) changed appId to io.okvia.* — Squirrel.Mac silently rejects cross-bundle-id updates, stranding macOS installs in an Install&Restart loop (Windows NSIS would have installed side-by-side). v1.1.0 re-drafted on both repos; v1.1.1 keeps ALL Okvia branding but restores appId (net.thinkopen.minka / net.thinkopen.support). Published 2026-07-19 eve, feeds verified 1.1.1, mac artifact Info.plist verified (bundleId original, name Okvia).
 🧨 STANDING RULE: never change appId in a release meant to flow through auto-update. The io.okvia.* identity migration is a dedicated future release WITH a feed-migration plan (new repo/feed or manual reinstall step), not a version bump. On disk the mac bundle stays Minka.app / ThinkOpen Support.app (folder name) while displaying as Okvia — cosmetic, fix in that same future migration.
+
+## 2026-08-19 — v1.1.3: autostart asserts real OS state instead of trusting a marker file
+**Symptom (prod, Keno's MacBook):** Okvia never auto-started at login and could not self-heal. The macOS login item had drifted to a stale `dist/` build of a *different* app bundle (`io.okvia.support`, thinkopen-support-desktop) while `ensureAutostartDefault()`'s `autostart-initialized` marker was already stamped — so the guard returned early forever. Manual fix was deleting the marker and relaunching.
+
+**Root cause:** the marker recorded *that we ran the code*, never *what the OS actually did*. Any OS-side drift after first launch was permanent.
+
+**Fix (`src/main.js`):** the marker is replaced by `autostart.json` in `userData`, which records the **decision** (`userDisabled`) and the **bundle we registered** (`registeredFor`); the OS **state** is asserted on every launch via `app.getLoginItemSettings()`:
+- `userDisabled: true` (set only by the tray checkbox) → never overridden. A deliberate opt-out still sticks across updates.
+- `status === "requires-approval"` (macOS 13+ SMAppService — user/MDM disabled us in System Settings) → recorded, not fought.
+- healthy = `openAtLogin === true` **AND** `registeredFor === ` the running `.app` bundle → no-op. We do **not** blindly re-register every launch.
+- anything else (not registered, `not-found`, item points at another/moved bundle, or a marker-era profile with no pref) → re-apply + re-stamp, and retire the legacy marker.
+- `!app.isPackaged` → return early. `npm start` used to be able to register the **Electron dev binary** as the login item — the same "item points at some other bundle" failure class.
+- Tray toggle now routes through `setAutostartEnabled()`; re-enabling had been dropping `openAsHidden`/`args:["--hidden"]`, so a toggle-off→on cycle produced a login item that launched **visible** and stole focus at login.
+
+**Migration tradeoff (deliberate):** a profile with the old marker and no pref has *unverifiable* state, so v1.1.3 asserts the default ONCE. A user who opted out pre-1.1.3 gets autostart re-enabled one time; their next toggle-off is recorded in `autostart.json` and permanent. Narrowing this by treating `openAtLogin === false` as "they opted out" was rejected — that is exactly the state the prod bug presents as, and it would leave the bug unhealed.
+
+**Same fix ported** to `thinkopen-support-desktop` (v1.1.3) and `arqos-desktop` (v1.0.3) — identical block, all three carried the marker pattern.
+
+**Verified:** 20-assertion suite over the 9 real state combinations (fresh install, steady state, the prod bug shape, drifted bundle, opt-out persistence across relaunches, tray re-enable args, requires-approval, dev run, app moved) — the harness slices the functions out of `src/main.js` at runtime and evaluates them against stubs, so the test cannot drift from what ships. **NOT yet verified on a real install** — the delete-login-item → relaunch → re-registers-to-/Applications/Okvia.app check needs a packaged build on a live desktop session.
