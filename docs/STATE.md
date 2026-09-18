@@ -5,7 +5,7 @@
 
 > **Living doc.** Update this at the end of any session that changes the project, then commit. It round-trips between machines via git — it is how office-Claude and travel-Claude stay in sync. Keep it short and current; move durable rules to `CLAUDE.md`.
 
-**Last updated:** 2026-06-25 · **Branch:** `main` — *state reflects the milestones below; run `git log` for live HEAD (no pinned SHA here — it self-invalidates on the next commit).*
+**Last updated:** 2026-09-18 · **Branch:** `main` — *state reflects the milestones below; run `git log` for live HEAD (no pinned SHA here — it self-invalidates on the next commit).*
 **Distribution:** GitHub Actions CI → public GitHub Releases at `github.com/jackarkcreator/minka-desktop`. Ships on `v*` tag push. `electron-updater` pulls `latest.yml` / `latest-mac.yml` from that feed. **macOS is now SIGNED + NOTARIZED (v1.0.8+) → mac auto-update is LIVE.** Windows NSIS still self-updates unsigned (Azure Trusted Signing deferred).
 
 ---
@@ -106,3 +106,8 @@ v1.1.0 (Okvia rebrand) changed appId to io.okvia.* — Squirrel.Mac silently rej
 The pref file **existing at all** is the proof the migration branch ran — a healthy state writes nothing. `autostart-initialized` is gone from `~/Library/Application Support/Okvia/`. Shipped as v1.1.3 (staff, 8/8 assets), Okvia Support v1.1.3 (8/8), Arqos v1.0.3 (5/5, mac-only).
 
 ⚠️ **Arqos cannot receive this via auto-update.** `arqos-desktop` has `electron-updater` in dependencies but never calls `autoUpdater` anywhere in `src/`, and the repo is private so its feed is not publicly fetchable. v1.0.3 requires a manual dmg install on every agent. For a monitoring agent this is the app where a silent non-start is least visible — worth wiring auto-update or an explicit deploy step.
+
+## 2026-09-18 — v1.1.4 (Windows only) + v1.1.5: open-in-browser, right-click, start on staff.thinkopen.net, mac CI signing fix
+- `window.minka.openInBrowser(url)` (≥1.1.4): https + staff/support hosts only → `shell.openExternal`. Used by Okvia remote support: passkeys can't run in Electron, so "Connect" hands off to the system browser.
+- 1.1.5: **right-click menu** (cut/copy/paste/select all, Copy Link, Copy Image); **APP_URL = https://staff.thinkopen.net/admin** (staff passkeys are rpID-bound there; staff.okvia.io now 308s).
+- 🧨 **v1.1.4 mac job FAILED** (`SecKeychainUnlock: passphrase not correct` in electron-builder's temp keychain, runner image macos-26 20260907). Fixed in the release.yml mac step: import the Developer ID p12 into a keychain WE create/unlock, set `CSC_KEYCHAIN`, unset `CSC_LINK`. v1.1.5 released with all 8 assets. v1.1.4 exists as a Windows-only release.
