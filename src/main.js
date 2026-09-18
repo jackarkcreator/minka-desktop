@@ -752,6 +752,26 @@ ipcMain.on("minka:set-badge", (_e, count) => {
   }
 });
 
+// Open one of OUR pages in the system browser. Deliberately narrow: https
+// only, exact staff/support hosts only, so a compromised page can't use the
+// bridge to launch arbitrary URLs or custom protocols.
+const OPEN_IN_BROWSER_HOSTS = new Set([
+  "staff.thinkopen.net",
+  "support.thinkopen.net",
+  "staff.okvia.io",
+  "support.okvia.io",
+]);
+ipcMain.handle("minka:open-in-browser", async (_e, url) => {
+  try {
+    const u = new URL(String(url));
+    if (u.protocol !== "https:" || !OPEN_IN_BROWSER_HOSTS.has(u.hostname)) return false;
+    await shell.openExternal(u.toString());
+    return true;
+  } catch {
+    return false;
+  }
+});
+
 // Timer widget: seconds since last user input anywhere on the machine, so the
 // web app's idle auto-pause doesn't kill timers while the engineer works in
 // another app. Failures resolve null → the web app falls back safely.

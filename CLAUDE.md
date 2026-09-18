@@ -51,7 +51,7 @@ The app bundles **no web code**. It renders the live site. Ship a web change →
 | Path | What |
 |---|---|
 | `src/main.js` | Electron main process — window, tray, IPC handlers, Koban agent fns, auto-update |
-| `src/preload.js` | Context bridge: exposes `window.minka.{isDesktop, app, version, platform, focusWindow, setBadge, onUpdateReady, installUpdate, getInventory, getPresence}` |
+| `src/preload.js` | Context bridge: exposes `window.minka.{isDesktop, app, version, platform, focusWindow, setBadge, onUpdateReady, installUpdate, getInventory, getPresence, openInBrowser}` (openInBrowser ≥ 1.1.4: https + our staff/support hosts only) |
 | `build/` | Icons (`icon.icns`, `icon.png`, `trayTemplate.png`@1x+@2x), `installer.nsh` (DPI-aware NSIS manifest) |
 | `assets/` | Same tray icons (runtime path for the main process) |
 | `.github/workflows/release.yml` | CI: on `v*` tag, builds mac universal + win x64 sequentially (`max-parallel: 1`), publishes to this repo's GitHub Releases |

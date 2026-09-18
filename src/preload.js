@@ -34,4 +34,9 @@ contextBridge.exposeInMainWorld("minka", {
   // Koban presence agent — returns a live session snapshot (or null). The web
   // app gates on the `activity` entitlement + disclosure and owns the POST.
   getPresence: () => ipcRenderer.invoke("minka:get-presence"),
+  // Open one of OUR https pages in the system browser (shell ≥ 1.1.4). Used
+  // where Electron can't do the job, e.g. passkey step-up before a remote
+  // session (Chromium blocks platform passkeys in Electron). Resolves true if
+  // handed off; main.js refuses anything but our staff/support hosts.
+  openInBrowser: (url) => ipcRenderer.invoke("minka:open-in-browser", url),
 });
