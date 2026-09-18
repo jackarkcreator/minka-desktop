@@ -253,7 +253,7 @@ async function collectPresence() {
 
 // ---- Config ---------------------------------------------------------------
 const APP_URL =
-  process.env.MINKA_URL || "https://staff.okvia.io/admin";
+  process.env.MINKA_URL || "https://staff.thinkopen.net/admin"; // 1.1.5: passkeys live on staff.thinkopen.net; staff.okvia.io redirects here
 
 // Auto-update pulls from the app's public GitHub Releases feed (configured in
 // package.json build.publish). Both platforms are signed now (mac: Developer ID +
@@ -596,6 +596,27 @@ function createWindow() {
   });
 
   // External links / new windows -> default browser (except OAuth + our hosts).
+  // Right-click menu (Electron ships none): text editing + copy link/image.
+  mainWindow.webContents.on("context-menu", (_e, params) => {
+    const f = params.editFlags;
+    const items = [];
+    if (params.linkURL) {
+      items.push({ label: "Copy Link", click: () => require("electron").clipboard.writeText(params.linkURL) });
+    }
+    if (params.hasImageContents) {
+      items.push({ label: "Copy Image", click: () => mainWindow.webContents.copyImageAt(params.x, params.y) });
+    }
+    if (items.length) items.push({ type: "separator" });
+    if (params.isEditable) {
+      items.push({ role: "cut", enabled: f.canCut }, { role: "copy", enabled: f.canCopy }, { role: "paste", enabled: f.canPaste });
+      items.push({ type: "separator" }, { role: "selectAll", enabled: f.canSelectAll });
+    } else {
+      items.push({ role: "copy", enabled: f.canCopy || !!params.selectionText });
+      items.push({ role: "selectAll" });
+    }
+    Menu.buildFromTemplate(items).popup({ window: mainWindow });
+  });
+
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (isInternalHost(url)) {
       return {
