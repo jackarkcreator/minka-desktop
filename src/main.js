@@ -13,6 +13,7 @@ const {
   session,
   powerMonitor,
   dialog,
+  net,
 } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
@@ -544,6 +545,54 @@ function ensureAutostartDefault() {
   }
 }
 
+// ---- Offline recovery -------------------------------------------------------
+const OFFLINE_PAGE = path.join(__dirname, "offline.html");
+const RETRY_MIN_MS = 2000;
+const RETRY_MAX_MS = 15000;
+let pendingURL = APP_URL; // page to return to once the network is back
+let retryTimer = null;
+let retryDelay = RETRY_MIN_MS;
+let lastLoadFailed = false;
+
+function loadApp(url) {
+  if (!mainWindow) return;
+  clearTimeout(retryTimer);
+  pendingURL = url;
+  // Rejects on failure; did-fail-load owns the recovery, so swallow here.
+  mainWindow
+    .loadURL(url, { userAgent: mainWindow.webContents.getUserAgent() })
+    .catch(() => {});
+}
+
+function isShowingOffline() {
+  return !!mainWindow && mainWindow.webContents.getURL().startsWith("file:");
+}
+
+function showOffline(url) {
+  pendingURL = url;
+  if (!isShowingOffline()) {
+    mainWindow.loadFile(OFFLINE_PAGE, { query: { target: url } }).catch(() => {});
+  }
+  scheduleRetry();
+}
+
+function scheduleRetry() {
+  clearTimeout(retryTimer);
+  retryTimer = setTimeout(() => {
+    // net.isOnline() false = no interface up at all; skip the doomed load.
+    if (net.isOnline()) loadApp(pendingURL);
+    else scheduleRetry();
+  }, retryDelay);
+  retryDelay = Math.min(Math.round(retryDelay * 1.5), RETRY_MAX_MS);
+}
+
+// Wake/unlock is exactly when the network flaps — retry right away.
+function retryNowIfOffline() {
+  if (!isShowingOffline()) return;
+  retryDelay = RETRY_MIN_MS;
+  loadApp(pendingURL);
+}
+
 function createWindow() {
   const state = loadState();
   const userAgentSuffix = ` MinkaDesktop/${app.getVersion()}`;
@@ -591,8 +640,34 @@ function createWindow() {
     mainWindow.webContents.getUserAgent() + userAgentSuffix
   );
 
-  mainWindow.loadURL(APP_URL, {
-    userAgent: mainWindow.webContents.getUserAgent(),
+  loadApp(APP_URL);
+
+  // A failed main-frame load (no network yet at login, DNS not up after wake,
+  // Wi-Fi drop mid-navigation) leaves Electron showing NOTHING — just the ink
+  // backgroundColor — forever. Swap in a local "waiting for connection" page and
+  // retry until the site loads, landing back on the page that failed.
+  mainWindow.webContents.on("did-fail-load", (_e, code, _desc, url, isMainFrame) => {
+    if (!isMainFrame || code === -3 /* ERR_ABORTED: redirect/cancelled nav */) return;
+    if (!/^https?:/.test(url)) return; // the offline page itself
+    lastLoadFailed = true;
+    showOffline(isInternalHost(url) ? url : APP_URL);
+  });
+  mainWindow.webContents.on("did-start-navigation", (_e, url, _inPage, isMainFrame) => {
+    if (isMainFrame && /^https?:/.test(url)) lastLoadFailed = false;
+  });
+  // Electron fires did-finish-load for the failed page too — only a load that
+  // didn't fail counts as recovered.
+  mainWindow.webContents.on("did-finish-load", () => {
+    if (!lastLoadFailed && /^https?:/.test(mainWindow.webContents.getURL())) {
+      clearTimeout(retryTimer);
+      retryDelay = RETRY_MIN_MS;
+    }
+  });
+  // Renderer crash / OOM also leaves a blank window — reload it.
+  mainWindow.webContents.on("render-process-gone", (_e, details) => {
+    if (details.reason === "clean-exit") return;
+    const url = mainWindow.webContents.getURL();
+    setTimeout(() => loadApp(/^https?:/.test(url) ? url : pendingURL), 1000);
   });
 
   // External links / new windows -> default browser (except OAuth + our hosts).
@@ -988,6 +1063,8 @@ app.whenReady().then(() => {
   if (launchedHidden()) setTimeout(maybePromptActivityConsent, 12000);
 
   app.on("activate", () => showWindow());
+  powerMonitor.on("resume", retryNowIfOffline);
+  powerMonitor.on("unlock-screen", retryNowIfOffline);
 });
 
 app.on("before-quit", () => {
