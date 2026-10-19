@@ -13,3 +13,13 @@
 !macro customHeader
   ManifestDPIAware true
 !macroend
+
+; okvia:// links (1.1.8). The app registers the scheme itself on launch
+; (app.setAsDefaultProtocolClient → HKCU\Software\Classes\okvia). Remove it on a
+; real uninstall so links stop pointing at a missing exe. Skipped during an
+; auto-update, where the old uninstaller runs before the new version starts.
+!macro customUnInstall
+  ${ifNot} ${isUpdated}
+    DeleteRegKey HKCU "Software\Classes\okvia"
+  ${endIf}
+!macroend

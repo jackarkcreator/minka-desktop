@@ -514,12 +514,97 @@ function saveState(win) {
 let mainWindow = null;
 let tray = null;
 
-// Single-instance lock — second launch just focuses the existing window.
+// ---- okvia:// deep links (1.1.8) ------------------------------------------
+// Email links go to staff.thinkopen.net/open?to=<path>, which hands off to
+// okvia://open?to=<path>. We open <path> on APP_URL's origin. Same rules as the
+// web's safeReturnPath (thinkopen-net src/lib/login-return.ts, staff variant):
+// single leading "/", no "//", no backslashes or control characters, resolves
+// on our origin, under /admin. Anything else is dropped, so a page that fires
+// okvia://open?to=https://evil.com gets nothing.
+const PROTOCOL = "okvia";
+const APP_ORIGIN = new URL(APP_URL).origin;
+const DEEP_LINK_PREFIXES = ["/admin"];
+const PROBE_ORIGIN = "https://deep-link.invalid";
+
+function safeAppPath(raw) {
+  if (typeof raw !== "string" || raw.length === 0 || raw.length > 2048) return null;
+  if (!raw.startsWith("/") || raw.startsWith("//")) return null;
+  if (/[\\\u0000-\u001f\u007f]/.test(raw)) return null;
+  let u;
+  try {
+    u = new URL(raw, PROBE_ORIGIN);
+  } catch {
+    return null;
+  }
+  if (u.origin !== PROBE_ORIGIN) return null;
+  // Normalisation can turn "/admin/../..//evil.com" into "//evil.com".
+  if (u.pathname.startsWith("//")) return null;
+  const allowed = DEEP_LINK_PREFIXES.some((p) => u.pathname === p || u.pathname.startsWith(`${p}/`));
+  if (!allowed) return null;
+  return `${u.pathname}${u.search}${u.hash}`;
+}
+
+// okvia://open?to=%2Fadmin%2Ftickets%2F<id>%23reply → https://<APP_ORIGIN>/admin/tickets/<id>#reply
+function deepLinkTarget(link) {
+  let u;
+  try {
+    u = new URL(String(link));
+  } catch {
+    return null;
+  }
+  if (u.protocol !== `${PROTOCOL}:` || u.hostname !== "open") return null;
+  if (u.pathname && u.pathname !== "/") return null;
+  let to = u.searchParams.get("to");
+  // An unencoded "#reply" lands on the okvia:// URL itself; carry it over.
+  if (to && !to.includes("#") && u.hash) to += u.hash;
+  const path = safeAppPath(to);
+  if (!path) return null;
+  const target = new URL(path, APP_ORIGIN);
+  return target.origin === APP_ORIGIN ? target.toString() : null;
+}
+
+// A link that arrives before the window exists (macOS cold start fires
+// open-url before ready) is loaded by createWindow instead of APP_URL.
+let pendingDeepLink = null;
+
+function openDeepLink(link) {
+  const target = deepLinkTarget(link);
+  if (!target) {
+    console.warn("[deep-link] ignored", String(link).slice(0, 200));
+    return;
+  }
+  if (!mainWindow) {
+    pendingDeepLink = target;
+    if (app.isReady()) showWindow();
+    return;
+  }
+  showWindow();
+  loadApp(target);
+}
+
+const deepLinkFromArgv = (argv) => (argv || []).find((a) => typeof a === "string" && a.startsWith(`${PROTOCOL}:`));
+
+// macOS delivers links here (cold start included). Registered at top level so
+// the cold-start event is never missed.
+app.on("open-url", (e, url) => {
+  e.preventDefault();
+  openDeepLink(url);
+});
+
+// Single-instance lock — second launch focuses the existing window. On
+// Windows a clicked okvia:// link arrives as an argv entry of that launch.
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
 } else {
-  app.on("second-instance", () => showWindow());
+  app.on("second-instance", (_e, argv) => {
+    const link = deepLinkFromArgv(argv);
+    if (link) openDeepLink(link);
+    else showWindow();
+  });
+  // Windows cold start: the link is in our own argv.
+  const coldLink = deepLinkFromArgv(process.argv);
+  if (coldLink) pendingDeepLink = deepLinkTarget(coldLink);
 }
 
 // True when the OS started us at login as a hidden item (so we boot straight to
@@ -742,7 +827,8 @@ function createWindow() {
     mainWindow.webContents.getUserAgent() + userAgentSuffix
   );
 
-  loadApp(APP_URL);
+  loadApp(pendingDeepLink || APP_URL);
+  pendingDeepLink = null;
 
   // A failed main-frame load (no network yet at login, DNS not up after wake,
   // Wi-Fi drop mid-navigation) leaves Electron showing NOTHING — just the ink
@@ -1152,6 +1238,14 @@ app.whenReady().then(() => {
   session.defaultSession.setPermissionCheckHandler((_wc, permission) =>
     permission === "notifications"
   );
+
+  // okvia:// links. Packaged only: in `npm start` this would register the
+  // Electron dev binary as the handler (same failure class as autostart).
+  // macOS also reads CFBundleURLTypes from build.protocols; Windows needs this
+  // call to write HKCU\Software\Classes\okvia.
+  if (app.isPackaged && !app.isDefaultProtocolClient(PROTOCOL)) {
+    app.setAsDefaultProtocolClient(PROTOCOL);
+  }
 
   buildAppMenu();
   ensureAutostartDefault();
