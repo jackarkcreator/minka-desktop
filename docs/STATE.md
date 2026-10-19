@@ -5,7 +5,7 @@
 
 > **Living doc.** Update this at the end of any session that changes the project, then commit. It round-trips between machines via git — it is how office-Claude and travel-Claude stay in sync. Keep it short and current; move durable rules to `CLAUDE.md`.
 
-**Last updated:** 2026-09-18 · **Branch:** `main` — *state reflects the milestones below; run `git log` for live HEAD (no pinned SHA here — it self-invalidates on the next commit).*
+**Last updated:** 2026-10-19 · **Branch:** `main` — *state reflects the milestones below; run `git log` for live HEAD (no pinned SHA here — it self-invalidates on the next commit).*
 **Distribution:** GitHub Actions CI → public GitHub Releases at `github.com/jackarkcreator/minka-desktop`. Ships on `v*` tag push. `electron-updater` pulls `latest.yml` / `latest-mac.yml` from that feed. **macOS is now SIGNED + NOTARIZED (v1.0.8+) → mac auto-update is LIVE.** Windows NSIS still self-updates unsigned (Azure Trusted Signing deferred).
 
 ---
@@ -127,3 +127,11 @@ The pref file **existing at all** is the proof the migration branch ran — a he
 - **Verified:** fake-updater harness over real main.js — not announced pre-stage, announced once, manual check post-stage made 0 checks, double install = 1 quitAndInstall, watchdog exits at 10s, in-flight manual check skipped, check re-allowed after error.
 - ⚠️ 1.1.6→1.1.7 still rides the OLD updater (may need retries / manual dmg). The true proof is 1.1.7→1.1.8: read updater.log.
 - **Published 2026-09-26** (Keno go). Feeds verified: latest-mac.yml + latest.yml = 1.1.7. (First CI run's mac job hit a transient GitHub 500 downloading the Electron binary during npm install → reran failed job only → 8/8.) Same fix ported + published same day: thinkopen-support-desktop v1.2.2, arqos-desktop v1.0.12 (arqos now releases as drafts too).
+
+## 2026-10-19 — v1.1.8: okvia:// links open in the app
+- **What:** staff email links can open in the app. The app registers `okvia://` (`build.protocols` → CFBundleURLTypes on macOS; `app.setAsDefaultProtocolClient` writes HKCU\Software\Classes\okvia on Windows; packaged builds only) and loads `okvia://open?to=<path>` on the APP_URL origin: macOS `open-url` (cold start included; the link waits in `pendingDeepLink` until `createWindow`), Windows `second-instance` argv and cold-start argv. The NSIS uninstaller removes the key on a real uninstall (skipped during updates).
+- **Path rules** = thinkopen-net `safeReturnPath` (staff variant): single leading "/", no "//", no backslashes or control characters, same origin, under /admin. A hash is kept (`#reply` focuses the composer). Anything else is dropped and logged.
+- **Web side** (thinkopen-net 68714a7 + c2dfe78): `staff.thinkopen.net/open?to=` launcher. Launcher links go ONLY to staff whose app reported 1.1.8+ within 14 days (`users.desktop_app_seen_at`, mig 127, stamped from the heartbeat's `desktopApp`/`desktopVersion`). 🧨 Safari shows a modal "address is invalid" alert when no app claims a scheme, so the launcher is never sent blind.
+- **Verified (mac):** isolated test build: cold start, warm link, `#reply` kept, crafted links ignored. Published notarized 1.1.8 installed on Luis's Mac: LaunchServices routes `okvia://` to it, a link moved the window to All Tickets, and 4 crafted links (`https://evil.com`, `//evil.com`, traversal, wrong host) left it there. Feeds = 1.1.8, 8/8 assets, `spctl` accepted/Notarized.
+- **Not verified:** Windows. The VM sat at the sign-in screen (`prlctl exec` failed). Test: install 1.1.8 → `reg query HKCU\Software\Classes\okvia /s` shows `"…\Okvia.exe" "%1"` → `start "" "okvia://open?to=%2Fadmin%2Ftickets"` opens All Tickets → `start "" "okvia://open?to=https://evil.com"` changes nothing.
+- 🧨 **Testing landmine:** a test build with a different appId that calls setAsDefaultProtocolClient leaves the LaunchServices preference pointing at that bundle after you delete it. Re-point it with `LSSetDefaultHandlerForURLScheme("okvia", "net.thinkopen.minka")`.
